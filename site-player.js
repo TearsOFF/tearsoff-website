@@ -158,12 +158,11 @@
   }
 
   const saved = readState();
-  if (saved?.src) {
-    const savedTracks = Array.isArray(saved.tracks) ? saved.tracks : [];
-    if (!tracks.length || saved.albumName !== albumName) {
-      tracks.splice(0, tracks.length, ...savedTracks);
-    }
-    currentIndex = saved.index ?? tracks.findIndex(track => track.src === saved.src);
+  const savedTrackIndex = saved?.src && saved.albumName === albumName
+    ? tracks.findIndex(track => track.src === saved.src)
+    : -1;
+  if (savedTrackIndex >= 0) {
+    currentIndex = savedTrackIndex;
     albumMode = Boolean(saved.albumMode);
     loadAudioSource(saved.src);
     titleNode.textContent = saved.title || tracks[currentIndex]?.title || 'Tears Off';
