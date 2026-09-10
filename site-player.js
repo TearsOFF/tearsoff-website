@@ -3,6 +3,8 @@
   const player = document.getElementById('track-player') || document.body.appendChild(document.createElement('audio'));
   player.id = 'track-player';
   player.preload = 'none';
+  player.setAttribute('playsinline', '');
+  player.setAttribute('webkit-playsinline', '');
 
   const buttons = [...document.querySelectorAll('.play-button')];
   const albumName = document.querySelector('h1')?.textContent.trim() || 'Tears Off';
@@ -36,17 +38,29 @@
   const next = ui.querySelector('[data-player-next]');
 
   const style = document.createElement('style');
-  style.textContent = '.site-player{position:fixed;z-index:20;right:max(1rem,env(safe-area-inset-right));bottom:max(1rem,env(safe-area-inset-bottom));left:max(1rem,env(safe-area-inset-left));display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border:1px solid rgba(244,240,232,.25);border-radius:.5rem;background:rgba(32,35,31,.96);box-shadow:0 .6rem 2rem rgba(0,0,0,.3);color:#f4f0e8;font-family:ui-sans-serif,system-ui,sans-serif}.site-player[hidden]{display:none}.site-player__copy{display:grid;min-width:0}.site-player__eyebrow{color:#d9a99b;font-size:.62rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.site-player__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem}.site-player__controls{display:flex;align-items:center;gap:.35rem}.site-player button{min-width:2.35rem;min-height:2.35rem;border:1px solid rgba(244,240,232,.35);border-radius:999px;background:transparent;color:inherit;font:700 .7rem/1 ui-sans-serif,system-ui,sans-serif;cursor:pointer}.site-player button:hover{border-color:#d9a99b;color:#d9a99b}@media(min-width:42rem){.site-player{left:auto;width:min(30rem,calc(100% - 2rem))}}';
+  style.textContent = 'html,body{max-width:100%;overflow-x:hidden}img{max-width:100%;height:auto}.wrap,.album-grid,.section-grid,.album-facts,.tracklist li{min-width:0}.album-facts dd,.track-title{overflow-wrap:anywhere}.site-player{position:fixed;z-index:20;right:max(1rem,env(safe-area-inset-right));bottom:max(1rem,env(safe-area-inset-bottom));left:max(1rem,env(safe-area-inset-left));display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border:1px solid rgba(244,240,232,.25);border-radius:.5rem;background:rgba(32,35,31,.96);box-shadow:0 .6rem 2rem rgba(0,0,0,.3);color:#f4f0e8;font-family:ui-sans-serif,system-ui,sans-serif}.site-player[hidden]{display:none}.site-player__copy{display:grid;min-width:0}.site-player__eyebrow{color:#d9a99b;font-size:.62rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.site-player__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem}.site-player__controls{display:flex;flex:0 0 auto;align-items:center;gap:.35rem}.site-player button{min-width:2.35rem;min-height:2.35rem;border:1px solid rgba(244,240,232,.35);border-radius:999px;background:transparent;color:inherit;font:700 .7rem/1 ui-sans-serif,system-ui,sans-serif;cursor:pointer}.site-player button:hover{border-color:#d9a99b;color:#d9a99b}@media(min-width:42rem){.site-player{left:auto;width:min(30rem,calc(100% - 2rem))}}';
   document.head.appendChild(style);
 
   const readState = () => {
     try { return JSON.parse(sessionStorage.getItem(stateKey) || 'null'); } catch { return null; }
   };
+  const activeSrc = () => player.currentSrc || player.querySelector('source')?.src || player.src;
+  const loadAudioSource = (src) => {
+    player.pause();
+    player.removeAttribute('src');
+    player.replaceChildren();
+    const source = document.createElement('source');
+    source.src = src;
+    source.type = 'audio/mpeg';
+    player.appendChild(source);
+    player.load();
+  };
   const writeState = () => {
-    if (!player.src) return;
+    const src = activeSrc();
+    if (!src) return;
     try {
       sessionStorage.setItem(stateKey, JSON.stringify({
-        src: player.src,
+        src,
         time: player.currentTime || 0,
         playing: !player.paused,
         index: currentIndex,
@@ -73,7 +87,7 @@
   };
   const updateMediaSession = () => {
     if (!('mediaSession' in navigator)) return;
-    const active = tracks[currentIndex] || { title: titleNode.textContent, src: player.src };
+    const active = tracks[currentIndex] || { title: titleNode.textContent, src: activeSrc() };
     if ('MediaMetadata' in window) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: active.title || 'Tears Off', artist: 'Tears Off · Marek Šniager', album: albumName,
@@ -86,7 +100,7 @@
     if (!tracks.length || index < 0 || index >= tracks.length) return;
     currentIndex = index;
     const track = tracks[currentIndex];
-    if (player.src !== track.src) player.src = track.src;
+    if (activeSrc() !== track.src) loadAudioSource(track.src);
     titleNode.textContent = track.title;
     ui.hidden = false;
     updateMediaSession();
@@ -116,8 +130,8 @@
   }));
   playAlbumButton?.addEventListener('click', playAlbum);
   toggle.addEventListener('click', () => {
-    if (!player.src && tracks.length) setTrack(0, false);
-    if (!player.src) return;
+    if (!activeSrc() && tracks.length) setTrack(0, false);
+    if (!activeSrc()) return;
     if (player.paused) player.play().catch(() => syncButtons()); else player.pause();
   });
   previous.addEventListener('click', playPrevious);
@@ -129,15 +143,18 @@
     saveTimer = window.setTimeout(writeState, 300);
   });
   player.addEventListener('ended', () => {
-    if (albumMode && currentIndex < tracks.length - 1) setTrack(currentIndex + 1, true);
-    else { albumMode = false; syncButtons(); writeState(); }
+    albumMode = false;
+    syncButtons();
+    writeState();
   });
   window.addEventListener('pagehide', writeState);
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => player.play().catch(() => {}));
-    navigator.mediaSession.setActionHandler('pause', () => player.pause());
-    navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
-    navigator.mediaSession.setActionHandler('nexttrack', playNext);
+    try {
+      navigator.mediaSession.setActionHandler('play', () => player.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler('pause', () => player.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
+      navigator.mediaSession.setActionHandler('nexttrack', playNext);
+    } catch {}
   }
 
   const saved = readState();
@@ -148,11 +165,11 @@
     }
     currentIndex = saved.index ?? tracks.findIndex(track => track.src === saved.src);
     albumMode = Boolean(saved.albumMode);
-    player.src = saved.src;
+    loadAudioSource(saved.src);
     titleNode.textContent = saved.title || tracks[currentIndex]?.title || 'Tears Off';
     ui.hidden = false;
     player.addEventListener('loadedmetadata', () => { if (saved.time) player.currentTime = saved.time; }, { once: true });
-    if (saved.playing) player.play().catch(() => { syncButtons(); updateMediaSession(); });
-    else { syncButtons(); updateMediaSession(); }
+    syncButtons();
+    updateMediaSession();
   }
 })();
